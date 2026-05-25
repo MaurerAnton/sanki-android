@@ -18,6 +18,7 @@ sealed class Screen(val route: String) {
     object Stats : Screen("stats")
     object Settings : Screen("settings")
     object Sync : Screen("sync")
+    object SharedDecks : Screen("shared")
 }
 
 @Composable
@@ -33,6 +34,9 @@ fun SankiNavGraph(navController: NavHostController) {
                 },
                 onOpenSettings = {
                     navController.navigate(Screen.Settings.route)
+                },
+                onOpenSharedDecks = {
+                    navController.navigate(Screen.SharedDecks.route)
                 }
             )
         }
@@ -60,6 +64,13 @@ fun SankiNavGraph(navController: NavHostController) {
 
         composable(Screen.Sync.route) {
             SyncScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Screen.SharedDecks.route) {
+            SharedDecksScreen(
+                onBack = { navController.popBackStack() },
+                onDeckImported = { navController.popBackStack() }
+            )
         }
     }
 }

@@ -27,7 +27,8 @@ import java.io.File
 fun DeckListScreen(
     onStartStudy: (deckPaths: List<String>) -> Unit,
     onViewStats: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenSharedDecks: () -> Unit
 ) {
     var decks by remember { mutableStateOf(SankiBridge.getDecks()) }
     var selectedDecks by remember { mutableStateOf(setOf<String>()) }
@@ -66,6 +67,10 @@ fun DeckListScreen(
                     titleContentColor = MaterialTheme.colorScheme.onPrimary
                 ),
                 actions = {
+                    IconButton(onClick = onOpenSharedDecks) {
+                        Icon(Icons.Default.Language, "Shared Decks",
+                            tint = MaterialTheme.colorScheme.onPrimary)
+                    }
                     IconButton(onClick = onViewStats) {
                         Icon(Icons.Default.BarChart, "Stats",
                             tint = MaterialTheme.colorScheme.onPrimary)
@@ -117,12 +122,12 @@ fun DeckListScreen(
                         style = MaterialTheme.typography.headlineSmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "Tap + to import an .apkg file",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedButton(onClick = onOpenSharedDecks) {
+                        Icon(Icons.Default.Language, null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Browse Community Decks")
+                    }
                 }
             }
         } else {
@@ -133,6 +138,50 @@ fun DeckListScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Shared decks banner card
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpenSharedDecks() },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Language,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Browse Community Decks",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    "Find shared decks on AnkiWeb",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
+                            }
+                            Icon(
+                                Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.secondary
+                            )
+                        }
+                    }
+                }
+
                 items(decks) { deck ->
                     val isSelected = deck.path in selectedDecks
                     Card(
