@@ -230,59 +230,75 @@ private suspend fun downloadAndImport(
     onProgress: (String, Float) -> Unit,
     onDone: (String) -> Unit,
     onError: (String) -> Unit
-) = withContext(Dispatchers.IO) {
+) {
     try {
-        onProgress("Downloading deck...", 0.1f)
+        withContext(Dispatchers.Main) {
+            onProgress("Downloading deck...", 0.1f)
+        }
 
         val fileName = URLUtil.guessFileName(url, null, null)
             ?: "shared_deck.apkg"
         val destFile = File(context.cacheDir, fileName)
 
-        val connection = URL(url).openConnection() as HttpURLConnection
+        val connection = withContext(Dispatchers.IO) {
+            URL(url).openConnection() as HttpURLConnection
+        }
         connection.connectTimeout = 30000
         connection.readTimeout = 60000
         connection.instanceFollowRedirects = true
 
         val contentLength = connection.contentLengthLong
 
-        connection.inputStream.use { input ->
-            FileOutputStream(destFile).use { output ->
-                val buffer = ByteArray(8192)
-                var bytesRead: Int
-                var totalRead = 0L
+        withContext(Dispatchers.IO) {
+            connection.inputStream.use { input ->
+                FileOutputStream(destFile).use { output ->
+                    val buffer = ByteArray(8192)
+                    var bytesRead: Int
+                    var totalRead = 0L
 
-                while (input.read(buffer).also { bytesRead = it } != -1) {
-                    output.write(buffer, 0, bytesRead)
-                    totalRead += bytesRead
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
+                        totalRead += bytesRead
 
-                    if (contentLength > 0) {
-                        val pct = totalRead.toFloat() / contentLength.toFloat()
-                        val mb = totalRead / (1024.0 * 1024.0)
-                        val totalMb = contentLength / (1024.0 * 1024.0)
-                        onProgress(
-                            "Downloading... %.1f / %.1f MB".format(mb, totalMb),
-                            pct.coerceIn(0f, 0.95f)
-                        )
+                        if (totalRead % (256 * 1024) == 0L && contentLength > 0) {
+                            val pct = totalRead.toFloat() / contentLength.toFloat()
+                            val mb = totalRead / (1024.0 * 1024.0)
+                            val totalMb = contentLength / (1024.0 * 1024.0)
+                            withContext(Dispatchers.Main) {
+                                onProgress(
+                                    "Downloading... %.1f / %.1f MB".format(mb, totalMb),
+                                    pct.coerceIn(0f, 0.95f)
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
         connection.disconnect()
 
-        onProgress("Importing deck...", 0.96f)
+        withContext(Dispatchers.Main) {
+            onProgress("Importing deck...", 0.96f)
+        }
 
-        // Import into sanki
-        val ok = SankiBridge.nativeImportApkg(destFile.absolutePath)
+        // Import into sanki (this calls native code, keep on IO for safety)
+        val ok = withContext(Dispatchers.IO) {
+            SankiBridge.nativeImportApkg(destFile.absolutePath)
+        }
         destFile.delete()
 
-        if (ok) {
-            val deckName = fileName.removeSuffix(".apkg")
-            onProgress("Done!", 1f)
-            onDone(deckName)
-        } else {
-            onError("Failed to import deck. It may be corrupted or in an unsupported format.")
+        withContext(Dispatchers.Main) {
+            if (ok) {
+                val deckName = fileName.removeSuffix(".apkg")
+                onProgress("Done!", 1f)
+                onDone(deckName)
+            } else {
+                onError("Failed to import deck. It may be corrupted or in an unsupported format.")
+            }
         }
     } catch (e: Exception) {
-        onError("Download failed: ${e.message}")
+        withContext(Dispatchers.Main) {
+            onError("Download failed: ${e.message}")
+        }
     }
 }
