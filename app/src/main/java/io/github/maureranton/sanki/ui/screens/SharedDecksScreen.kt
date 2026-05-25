@@ -126,6 +126,33 @@ fun SharedDecksScreen(
                                 "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 " +
                                 "sanki-android/0.3"
 
+                            // Proper download interception via DownloadListener
+                            setDownloadListener { downloadUrl, _, _, _, _ ->
+                                scope.launch {
+                                    downloadAndImport(
+                                        context, downloadUrl,
+                                        onProgress = { msg, pct ->
+                                            showProgress = true
+                                            downloadProgress = msg
+                                            progressPercent = pct
+                                        },
+                                        onDone = { deckName ->
+                                            showProgress = false
+                                            Toast.makeText(
+                                                context,
+                                                "Imported: $deckName",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            onDeckImported()
+                                        },
+                                        onError = { msg ->
+                                            showProgress = false
+                                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                        }
+                                    )
+                                }
+                            }
+
                             webViewClient = object : WebViewClient() {
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     isLoading = false
@@ -136,40 +163,8 @@ fun SharedDecksScreen(
                                     request: WebResourceRequest?
                                 ): Boolean {
                                     val url = request?.url?.toString() ?: return false
-
-                                    // Intercept .apkg download links
-                                    if (url.endsWith(".apkg") || url.contains("download")) {
-                                        scope.launch {
-                                            downloadAndImport(
-                                                context, url,
-                                                onProgress = { msg, pct ->
-                                                    showProgress = true
-                                                    downloadProgress = msg
-                                                    progressPercent = pct
-                                                },
-                                                onDone = { deckName ->
-                                                    showProgress = false
-                                                    Toast.makeText(
-                                                        context,
-                                                        "Imported: $deckName",
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
-                                                    onDeckImported()
-                                                },
-                                                onError = { msg ->
-                                                    showProgress = false
-                                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                                                }
-                                            )
-                                        }
-                                        return true // Don't navigate, we handle it
-                                    }
-
-                                    // Keep navigation within AnkiWeb
-                                    if (url.contains("ankiweb.net")) {
-                                        return false // Let WebView handle
-                                    }
-                                    return true // Block external links
+                                    // Keep browsing within AnkiWeb, block external links
+                                    return !url.contains("ankiweb.net")
                                 }
                             }
 
@@ -297,8 +292,15 @@ private suspend fun downloadAndImport(
             }
         }
     } catch (e: Exception) {
+        val msg = when {
+            e.message != null -> e.message!!
+            e is java.net.UnknownHostException -> "No internet connection"
+            e is java.net.SocketTimeoutException -> "Connection timed out"
+            e is java.io.IOException -> "Network error: ${e.javaClass.simpleName}"
+            else -> "Download failed: ${e.javaClass.simpleName}"
+        }
         withContext(Dispatchers.Main) {
-            onError("Download failed: ${e.message}")
+            onError(msg)
         }
     }
 }
