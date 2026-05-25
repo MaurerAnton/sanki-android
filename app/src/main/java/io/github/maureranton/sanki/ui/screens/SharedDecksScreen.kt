@@ -251,48 +251,60 @@ private suspend fun downloadAndImport(
             ?: "shared_deck.apkg"
         val destFile = File(context.cacheDir, fileName)
 
-        val connection = withContext(Dispatchers.IO) {
-            URL(url).openConnection() as HttpURLConnection
-        }
-        connection.connectTimeout = 30000
-        connection.readTimeout = 60000
-        connection.instanceFollowRedirects = true
+        // All network I/O in one IO block — no Main thread calls
+        val downloadOk = withContext(Dispatchers.IO) {
+            try {
+                val connection = URL(url).openConnection() as HttpURLConnection
+                connection.connectTimeout = 30000
+                connection.readTimeout = 60000
+                connection.instanceFollowRedirects = true
+                connection.connect()
 
-        val contentLength = connection.contentLengthLong
+                val contentLength = connection.contentLengthLong
 
-        withContext(Dispatchers.IO) {
-            connection.inputStream.use { input ->
-                FileOutputStream(destFile).use { output ->
-                    val buffer = ByteArray(8192)
-                    var bytesRead: Int
-                    var totalRead = 0L
+                connection.inputStream.use { input ->
+                    FileOutputStream(destFile).use { output ->
+                        val buffer = ByteArray(8192)
+                        var bytesRead: Int
+                        var totalRead = 0L
 
-                    while (input.read(buffer).also { bytesRead = it } != -1) {
-                        output.write(buffer, 0, bytesRead)
-                        totalRead += bytesRead
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                            totalRead += bytesRead
 
-                        if (totalRead % (256 * 1024) == 0L && contentLength > 0) {
-                            val pct = totalRead.toFloat() / contentLength.toFloat()
-                            val mb = totalRead / (1024.0 * 1024.0)
-                            val totalMb = contentLength / (1024.0 * 1024.0)
-                            withContext(Dispatchers.Main) {
-                                onProgress(
-                                    "Downloading... %.1f / %.1f MB".format(mb, totalMb),
-                                    pct.coerceIn(0f, 0.95f)
-                                )
+                            if (totalRead % (512 * 1024) == 0L && contentLength > 0) {
+                                val pct = totalRead.toFloat() / contentLength.toFloat()
+                                val mb = totalRead / (1024.0 * 1024.0)
+                                val totalMb = contentLength / (1024.0 * 1024.0)
+                                withContext(Dispatchers.Main) {
+                                    onProgress(
+                                        "Downloading... %.1f / %.1f MB".format(mb, totalMb),
+                                        pct.coerceIn(0f, 0.95f)
+                                    )
+                                }
                             }
                         }
                     }
                 }
+                connection.disconnect()
+                true
+            } catch (e: Exception) {
+                destFile.delete()
+                throw e
             }
         }
-        connection.disconnect()
+
+        if (!downloadOk) {
+            withContext(Dispatchers.Main) {
+                onError("Download incomplete")
+            }
+            return
+        }
 
         withContext(Dispatchers.Main) {
             onProgress("Importing deck...", 0.96f)
         }
 
-        // Import into sanki (this calls native code, keep on IO for safety)
         val ok = withContext(Dispatchers.IO) {
             SankiBridge.nativeImportApkg(destFile.absolutePath)
         }

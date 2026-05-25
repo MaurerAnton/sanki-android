@@ -3,15 +3,22 @@
 #include <jni.h>
 #include <string>
 #include <cstring>
+#include <ctime>
 #include <android/log.h>
 
 #include "sanki_core.hpp"
+#include "fsrs_scheduler.hpp"
+#include "search_engine.hpp"
+#include "stats_engine.hpp"
 
 #define TAG "sanki-native"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 static sanki::SankiCore* g_core = nullptr;
+static sanki::FsrsScheduler* g_fsrs = nullptr;
+static sanki::SearchEngine* g_search = nullptr;
+static sanki::StatsEngine* g_stats = nullptr;
 
 // Helper: convert jstring to std::string
 static std::string jstringToString(JNIEnv* env, jstring jstr) {
@@ -256,9 +263,111 @@ JNIEXPORT void JNICALL
 Java_io_github_maureranton_sanki_bridge_SankiBridge_nativeSetConfig(
     JNIEnv* env, jclass clazz, jstring configJson) {
     if (!g_core) return;
-    // Minimal: just store the raw JSON and apply known keys
-    // Full parsing would be complex; for now accept basic values
     (void)configJson;
+}
+
+// ===== FSRS-5 Scheduler =====
+
+JNIEXPORT void JNICALL
+Java_io_github_maureranton_sanki_bridge_SankiBridge_nativeInitFsrs(
+    JNIEnv* env, jclass clazz) {
+    if (g_fsrs) delete g_fsrs;
+    g_fsrs = new sanki::FsrsScheduler();
+    if (!g_stats) g_stats = new sanki::StatsEngine();
+    LOGI("FSRS-5 scheduler initialized");
+}
+
+JNIEXPORT jstring JNICALL
+Java_io_github_maureranton_sanki_bridge_SankiBridge_nativeFsrsGetNextCard(
+    JNIEnv* env, jclass clazz) {
+    if (!g_fsrs) return stringToJstring(env, "");
+    return stringToJstring(env, "{}");
+    // Full implementation would return JSON card data
+}
+
+JNIEXPORT void JNICALL
+Java_io_github_maureranton_sanki_bridge_SankiBridge_nativeFsrsAnswerCard(
+    JNIEnv* env, jclass clazz, jint rating) {
+    if (!g_fsrs) return;
+    g_fsrs->answerCard(rating);
+    // Record in stats
+    if (g_stats) {
+        auto* card = g_fsrs->currentCard();
+        auto* state = g_fsrs->currentState();
+        if (card && state) {
+            g_stats->recordReview(card->id, rating, state->stability, time(nullptr));
+        }
+    }
+}
+
+JNIEXPORT jstring JNICALL
+Java_io_github_maureranton_sanki_bridge_SankiBridge_nativeFsrsGetStats(
+    JNIEnv* env, jclass clazz) {
+    if (!g_fsrs) return stringToJstring(env, "{}");
+    char buf[256];
+    snprintf(buf, sizeof(buf),
+        "{\"due\":%d,\"new\":%d,\"review\":%d,\"learning\":%d}",
+        g_fsrs->dueCount(), g_fsrs->newCount(),
+        g_fsrs->reviewCount(), g_fsrs->learningCount());
+    return stringToJstring(env, buf);
+}
+
+// ===== FTS5 Search =====
+
+JNIEXPORT void JNICALL
+Java_io_github_maureranton_sanki_bridge_SankiBridge_nativeInitSearch(
+    JNIEnv* env, jclass clazz) {
+    if (g_search) delete g_search;
+    g_search = new sanki::SearchEngine();
+    LOGI("FTS5 search engine initialized");
+}
+
+JNIEXPORT void JNICALL
+Java_io_github_maureranton_sanki_bridge_SankiBridge_nativeIndexDeck(
+    JNIEnv* env, jclass clazz, jstring deckPath) {
+    if (!g_search) return;
+    std::string path = jstringToString(env, deckPath);
+    sanki::DeckLoader loader;
+    if (loader.openDeck(path)) {
+        // sqlite3_db_handle would be the internal handle — we need to access it
+        // For now, reopen the DB directly
+        std::string dbPath = path + "/collection.anki21";
+        sqlite3* db = nullptr;
+        if (sqlite3_open_v2(dbPath.c_str(), &db, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK) {
+            g_search->indexDeck(path, db);
+            sqlite3_close(db);
+            LOGI("Indexed deck: %s", path.c_str());
+        }
+    }
+}
+
+JNIEXPORT jstring JNICALL
+Java_io_github_maureranton_sanki_bridge_SankiBridge_nativeSearch(
+    JNIEnv* env, jclass clazz, jstring query) {
+    if (!g_search) return stringToJstring(env, "[]");
+    std::string q = jstringToString(env, query);
+    auto results = g_search->search(q);
+
+    std::string json = "[";
+    for (size_t i = 0; i < results.size(); i++) {
+        if (i > 0) json += ",";
+        json += "{\"deck\":\"" + results[i].deckName
+              + "\",\"front\":\"" + results[i].frontSnippet
+              + "\",\"back\":\"" + results[i].backSnippet
+              + "\",\"score\":" + std::to_string(results[i].score)
+              + "}";
+    }
+    json += "]";
+    return stringToJstring(env, json);
+}
+
+// ===== Statistics =====
+
+JNIEXPORT jstring JNICALL
+Java_io_github_maureranton_sanki_bridge_SankiBridge_nativeGetAllStats(
+    JNIEnv* env, jclass clazz) {
+    if (!g_stats) return stringToJstring(env, "{}");
+    return stringToJstring(env, g_stats->toJson());
 }
 
 } // extern "C"

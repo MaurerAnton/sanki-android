@@ -44,6 +44,20 @@ object SankiBridge {
     @JvmStatic external fun nativeGetConfig(): String
     @JvmStatic external fun nativeSetConfig(configJson: String)
 
+    // FSRS-5 Scheduler
+    @JvmStatic external fun nativeInitFsrs()
+    @JvmStatic external fun nativeFsrsGetNextCard(): String
+    @JvmStatic external fun nativeFsrsAnswerCard(rating: Int)
+    @JvmStatic external fun nativeFsrsGetStats(): String
+
+    // FTS5 Search
+    @JvmStatic external fun nativeInitSearch()
+    @JvmStatic external fun nativeIndexDeck(deckPath: String)
+    @JvmStatic external fun nativeSearch(query: String): String
+
+    // Statistics
+    @JvmStatic external fun nativeGetAllStats(): String
+
     // --- Kotlin-friendly wrappers ---
 
     data class DeckInfo(val path: String, val name: String, val cardCount: Int)

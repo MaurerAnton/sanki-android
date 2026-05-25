@@ -5,6 +5,9 @@ project("sanki-core")
 set(CORE_SOURCES
     deck_loader.cpp
     sm2_scheduler.cpp
+    fsrs_scheduler.cpp
+    search_engine.cpp
+    stats_engine.cpp
     session_manager.cpp
     sanki_core.cpp
 )
