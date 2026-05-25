@@ -120,11 +120,27 @@ fun SharedDecksScreen(
                     factory = { ctx ->
                         WebView(ctx).apply {
                             @SuppressLint("SetJavaScriptEnabled")
+                            // Full browser capabilities for AnkiWeb login
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
+                            settings.databaseEnabled = true
+                            settings.loadWithOverviewMode = true
+                            settings.useWideViewPort = true
+                            @Suppress("DEPRECATION")
+                            settings.mixedContentMode =
+                                android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+
+                            // Standard Chrome Android user-agent (avoids bot detection)
                             settings.userAgentString =
                                 "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 " +
-                                "sanki-android/0.3"
+                                "(KHTML, like Gecko) Chrome/125.0.6422.165 Mobile Safari/537.36"
+
+                            // Enable cookies — required for AnkiWeb login
+                            val wv = this
+                            android.webkit.CookieManager.getInstance().apply {
+                                setAcceptCookie(true)
+                                setAcceptThirdPartyCookies(wv, true)
+                            }
 
                             // Proper download interception via DownloadListener
                             setDownloadListener { downloadUrl, _, _, _, _ ->
