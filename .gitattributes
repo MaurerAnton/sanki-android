@@ -1,0 +1,8 @@
+# Mark bundled SQLite as vendored — it's not our code
+app/src/main/cpp/sqlite3/* linguist-vendored
+
+# Mark Gradle wrapper jar as generated
+gradle/wrapper/gradle-wrapper.jar linguist-generated
+
+# Mark build files
+*.gradle.kts linguist-detectable=true
